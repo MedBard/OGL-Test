@@ -17,10 +17,12 @@ DEFINES += QT_DEPRECATED_WARNINGS
 
 SOURCES += \
     OGLWidget.cpp \
-    main.cpp
+    main.cpp \
+    object3d.cpp
 
 HEADERS += \
-    OGLWidget.h
+    OGLWidget.h \
+    object3d.h
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin

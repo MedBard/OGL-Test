@@ -1,9 +1,12 @@
 #include "OGLWidget.h"
+#include "object3d.h"
+
+#include <QMouseEvent>
+#include <QOpenGLContext>
 
 
 Widget::Widget(QWidget *parent)
-    : QOpenGLWidget(parent), m_texture(nullptr),
-      m_indexBuffer(QOpenGLBuffer::IndexBuffer)
+    : QOpenGLWidget(parent)
 {
 }
 
@@ -19,7 +22,10 @@ void Widget::initializeGL()
     glEnable(GL_CULL_FACE); // cutting behind
 
     initShaders();
-    iniCube(1.0f);
+    initCube(2.0f);
+    m_objects[0]->translate(QVector3D(-1.2f, 0.0f, 0.0f));
+    initCube(2.0f);
+    m_objects[1]->translate(QVector3D(1.2f, 0.0f, 0.0f));
 }
 
 void Widget::resizeGL(int w, int h)
@@ -33,36 +39,44 @@ void Widget::paintGL()
 {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    QMatrix4x4 modelViewMatrix;
-    modelViewMatrix.setToIdentity();
-    modelViewMatrix.translate(0.0f, 0.0f, -5.0f); //back off camera
-
-    m_texture->bind(0);
+    QMatrix4x4 viewMatrix;
+    viewMatrix.setToIdentity();
+    viewMatrix.translate(0.0f, 0.0f, -5.0f); //back off camera
+    viewMatrix.rotate(m_rotation);
 
     m_program.bind();
-    m_program.setUniformValue("qt_ModelViewProjectionMatrix",
-                              m_projectionMatrix * modelViewMatrix);
-    m_program.setUniformValue("qt_Texture0",0);
+    m_program.setUniformValue("u_projectionMatrix", m_projectionMatrix);
+    m_program.setUniformValue("u_viewMatrix", viewMatrix);// camera matrix
 
-    m_arrayBuffer.bind();
+    m_program.setUniformValue("u_lightPosition",
+                              QVector4D(0.0f, 0.0f, 0.0f, 1.0f));
+    m_program.setUniformValue("u_lightPower", 5.0f);
+    for (int i = 0; i < m_objects.size(); ++i) {
 
-    int offset = 0;
+         m_objects[i]->draw(&m_program, context()->functions());
+    }
+}
 
-    int vertLoc = m_program.attributeLocation("qt_Vertex");
-    m_program.enableAttributeArray(vertLoc);
-    m_program.setAttributeBuffer(vertLoc, GL_FLOAT, offset,
-                                 3, sizeof (VertexData));
+void Widget::mousePressEvent(QMouseEvent *event)
+{
+    if(event->buttons() == Qt::LeftButton){
+        m_mousePosition = QVector2D(event->localPos());
+    }
+    event->accept();
+}
 
-    offset += sizeof (QVector3D);
+void Widget::mouseMoveEvent(QMouseEvent *event)
+{
+    if(event->buttons() != Qt::LeftButton)
+        return;
+    QVector2D diff = QVector2D (event->localPos()) - m_mousePosition;
+    m_mousePosition = QVector2D(event->localPos());
 
+    float angle = diff.length() / 2.0f;
+    QVector3D axis = QVector3D(diff.y(), diff.x(), 0.0f);
+    m_rotation = QQuaternion::fromAxisAndAngle(axis, angle) * m_rotation;
 
-    int texLoc = m_program.attributeLocation("qt_MultiTexCoord0");
-    m_program.enableAttributeArray(texLoc);
-    m_program.setAttributeBuffer(texLoc, GL_FLOAT, offset,
-                                 2, sizeof (VertexData));
-    m_indexBuffer.bind();
-    glDrawElements(GL_TRIANGLES, m_indexBuffer.size(),
-                   GL_UNSIGNED_INT, nullptr);
+    update();
 }
 
 void Widget::initShaders()
@@ -77,7 +91,7 @@ void Widget::initShaders()
         close();
 }
 
-void Widget::iniCube(float width)
+void Widget::initCube(float width)
 {
     float w_div_2 = width / 2.0f;
     QVector<VertexData> vertexes;
@@ -170,22 +184,6 @@ void Widget::iniCube(float width)
         indexes.append(i + 3);
     }
 
-    m_arrayBuffer.create();
-    m_arrayBuffer.bind();
-    m_arrayBuffer.allocate(vertexes.constData(),
-                           vertexes.size() *
-                           static_cast<int>(sizeof(VertexData)));
-    m_arrayBuffer.release();
-
-    m_indexBuffer.create();
-    m_indexBuffer.bind();
-    m_indexBuffer.allocate(indexes.constData(),
-                           indexes.size() * static_cast<int>(sizeof(GLuint)));
-    m_indexBuffer.release();
-
-    m_texture = new QOpenGLTexture(QImage(":/cube.png").mirrored());
-    m_texture->setMinificationFilter(QOpenGLTexture::Nearest);
-    m_texture->setMagnificationFilter(QOpenGLTexture::Linear);
-    m_texture->setWrapMode(QOpenGLTexture::Repeat);
+    m_objects.append(new Object3D(vertexes, indexes, QImage(":/cube.png")));
 }
 
